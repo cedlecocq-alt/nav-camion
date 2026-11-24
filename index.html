@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Nav Camion">
+<meta name="theme-color" content="#0b1f33">
+<title>Navigation camion</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none;font:16px/1.35 -apple-system,system-ui,Segoe UI,Roboto,sans-serif;color:#10213a;background:#0b1f33}
+#app{position:fixed;inset:0}
+#stage{position:absolute;inset:0;overflow:hidden;perspective:650px;perspective-origin:50% 28%;background:#dfe3e8}
+#map{position:absolute;left:0;top:0;width:100%;height:100%;display:block;touch-action:none;transform-origin:50% 50%}
+#sky{display:none;position:absolute;left:0;right:0;top:0;height:30%;background:linear-gradient(#c9d6ea,rgba(201,214,234,0));pointer-events:none}
+#banner{position:absolute;left:8px;right:8px;top:calc(env(safe-area-inset-top) + 8px);background:#0b5d3b;color:#fff;border-radius:14px;padding:10px 14px;display:none;align-items:center;gap:12px;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+#bIcon{font-size:38px;line-height:1;width:48px;text-align:center}
+#bDist{font-size:26px;font-weight:700;line-height:1.1}
+#bText{font-size:15px;opacity:.95}
+#toast{position:absolute;left:12px;right:12px;top:calc(env(safe-area-inset-top) + 92px);background:rgba(16,33,58,.94);color:#fff;border-radius:12px;padding:10px 14px;display:none;font-size:15px;z-index:6}
+#toast.bad{background:rgba(180,35,24,.96)}
+#side{position:absolute;right:10px;top:calc(env(safe-area-inset-top) + 100px);display:none;flex-direction:column;gap:8px;z-index:4}
+#side button{width:48px;height:48px;border-radius:24px;border:0;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3);font-size:19px;padding:0;color:#10213a}
+#speed{position:absolute;left:10px;top:calc(env(safe-area-inset-top) + 100px);display:none;background:#fff;border-radius:12px;padding:4px 10px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.3);z-index:4}
+#speed b{font-size:22px;display:block;line-height:1.1}
+#speed span{font-size:11px;color:#5b6475}
+#sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:18px 18px 0 0;box-shadow:0 -4px 18px rgba(0,0,0,.25);padding:14px 14px calc(env(safe-area-inset-bottom) + 14px);max-height:78%;overflow:auto;z-index:5}
+#sheet h1{font-size:18px;margin:0 0 8px}
+label{display:block;font-size:13px;color:#5b6475;margin:8px 0 3px}
+input{width:100%;font-size:16px;padding:10px;border:1px solid #c8cdd6;border-radius:10px;background:#fff;color:#10213a}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+button.big{width:100%;margin-top:10px;padding:13px;border:0;border-radius:12px;background:#0b63ce;color:#fff;font-size:17px;font-weight:600}
+button.big.sec{background:#e6e9ef;color:#10213a}
+button.big.red{background:#c2410c}
+button:disabled{opacity:.5}
+.btnrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+details{margin-top:8px}
+summary{font-size:14px;color:#0b63ce}
+.hint{font-size:12px;color:#6b7385;margin-top:6px}
+.err{color:#b42318;font-size:14px;margin-top:8px;white-space:pre-wrap}
+#hud{display:none}
+#hud .big1{font-size:28px;font-weight:700}
+#hud .sub{font-size:14px;color:#5b6475}
+#hud .bad{color:#b42318;font-weight:600}
+#pv{display:none}
+#pvText{font-size:16px}
+.warn{background:#fff7e6;border:1px solid #f5d79a;border-radius:10px;padding:8px 10px;font-size:12px;margin-top:10px;color:#6b4a00}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage"><canvas id="map"></canvas></div>
+  <div id="sky"></div>
+
+  <div id="banner"><div id="bIcon">⬆️</div><div><div id="bDist">–</div><div id="bText">–</div></div></div>
+  <div id="toast"></div>
+  <div id="speed"><b id="spd">0</b><span>km/h</span></div>
+  <div id="side">
+    <button id="b3d" title="2D / 3D">3D</button>
+    <button id="bVoice" title="Voix">🔊</button>
+  </div>
+
+  <div id="sheet">
+    <!-- 1. Préparation -->
+    <div id="setup">
+      <h1>🚚 Navigation camion</h1>
+      <label for="key">Clé API TomTom</label>
+      <input id="key" type="password" autocomplete="off" placeholder="Collez votre clé (restreinte à ce site)">
+      <label for="dest">Destination</label>
+      <input id="dest" list="dl" autocomplete="off" placeholder="Adresse du chantier, du client…">
+      <datalist id="dl"></datalist>
+      <details>
+        <summary>Profil du camion</summary>
+        <div class="row">
+          <div><label for="w">Poids total (kg)</label><input id="w" type="number" inputmode="numeric" value="44000"></div>
+          <div><label for="ax">Essieu max (kg)</label><input id="ax" type="number" inputmode="numeric" value="0"></div>
+        </div>
+        <div class="row3">
+          <div><label for="l">Long. (m)</label><input id="l" type="number" inputmode="decimal" step="0.1" value="16.5"></div>
+          <div><label for="wd">Larg. (m)</label><input id="wd" type="number" inputmode="decimal" step="0.01" value="2.55"></div>
+          <div><label for="h">Haut. (m)</label><input id="h" type="number" inputmode="decimal" step="0.01" value="4"></div>
+        </div>
+        <label for="vmax">Vitesse max (km/h)</label>
+        <input id="vmax" type="number" inputmode="numeric" value="90">
+      </details>
+      <button class="big" id="calcBtn">Calculer depuis ma position</button>
+      <button class="big sec" id="demoBtn">Démo sans GPS (départ du dépôt)</button>
+      <div id="err" class="err"></div>
+      <div class="warn">Prototype : à utiliser par un passager ou à l'arrêt. Les restrictions camion proviennent des données TomTom et ne remplacent pas la signalisation sur place.</div>
+    </div>
+
+    <!-- 2. Aperçu -->
+    <div id="pv">
+      <div id="pvText"></div>
+      <button class="big" id="startBtn">▶ Démarrer la navigation</button>
+      <button class="big sec" id="backBtn">Modifier</button>
+    </div>
+
+    <!-- 3. Navigation -->
+    <div id="hud">
+      <div class="big1"><span id="hEta">–</span> <span class="sub" id="hRest"></span></div>
+      <div class="sub" id="hSub"></div>
+      <div class="btnrow">
+        <button class="big sec" id="recBtn">↻ Recalculer</button>
+        <button class="big red" id="stopBtn">■ Arrêter</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const BASE = 'https://api.tomtom.com';
+const DEPOT = 'Rue de la Polissoire 3, 5032 Bossière';
+const DPR0 = Math.min(window.devicePixelRatio || 1, 2);
+let SC = DPR0, mode3d = false, pref3d = true, hdgCam = null, vh = null, lastHeadPos = null;
+let gps = null, dest = null, origin = null, route = null, incidents = [], mode = 'setup';
+let nav = null, voiceOn = true, deb, calls = 0, incBusy = false, lastInc = 0;
+const sugg = new Map();
+const CFG = ['key', 'dest', 'w', 'ax', 'l', 'wd', 'h', 'vmax'];
+
+/* ---------- utilitaires ---------- */
+try { const c = JSON.parse(localStorage.getItem('navcfg') || '{}'); CFG.forEach(k => { if (c[k] != null) $(k).value = c[k]; }); } catch (_) {}
+function saveCfg() { try { const c = {}; CFG.forEach(k => c[k] = $(k).value); localStorage.setItem('navcfg', JSON.stringify(c)); } catch (_) {} }
+const key = () => $('key').value.trim();
+const total = r => r.cum[r.cum.length - 1];
+const fmtDur = s => { const m = Math.round(s / 60), h = Math.floor(m / 60); return h ? `${h} h ${String(m % 60).padStart(2, '0')}` : `${m} min`; };
+const fmtKm = m => m < 1000 ? Math.round(m / 10) * 10 + ' m' : (m / 1000).toFixed(1).replace('.', ',') + ' km';
+const fmtDist = m => m < 1000 ? Math.max(0, Math.round(m / 10) * 10) + ' m' : (m / 1000).toFixed(1).replace('.', ',') + ' km';
+let toastT;
+function toast(msg, bad, ms) {
+  const t = $('toast'); t.textContent = msg; t.className = bad ? 'bad' : ''; t.style.display = 'block';
+  clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', ms || 5000);
+}
+function setErr(m) { $('err').textContent = m || ''; }
+function say(txt) {
+  if (!voiceOn || !('speechSynthesis' in window)) return;
+  try {
+    const u = new SpeechSynthesisUtterance(txt); u.lang = 'fr-FR'; u.rate = 1.0;
+    const v = speechSynthesis.getVoices().find(x => x.lang && x.lang.toLowerCase().startsWith('fr')); if (v) u.voice = v;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  } catch (_) {}
+}
+async function api(url, opts) {
+  calls++;
+  let r;
+  try { r = await fetch(url, opts); } catch (e) { throw new Error('Impossible de joindre TomTom (réseau, ou clé restreinte à un autre domaine)'); }
+  if (!r.ok) {
+    let t = r.statusText;
+    try { const j = await r.json(); t = (j.error && j.error.description) || (j.detailedError && j.detailedError.message) || JSON.stringify(j); } catch (_) {}
+    throw new Error('TomTom ' + r.status + ' : ' + t);
+  }
+  return r.json();
+}
+function bearing(a, b) {
+  const r = Math.PI / 180, dL = (b.lon - a.lon) * r, y = Math.sin(dL) * Math.cos(b.lat * r),
+        x = Math.cos(a.lat * r) * Math.sin(b.lat * r) - Math.sin(a.lat * r) * Math.cos(b.lat * r) * Math.cos(dL);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+function distM(a, b) { const ky = 110540, kx = 111320 * Math.cos(a.lat * Math.PI / 180); return Math.hypot((a.lon - b.lon) * kx, (a.lat - b.lat) * ky); }
+
+/* ---------- GPS ---------- */
+function fixOf(p) {
+  const c = p.coords;
+  return { lat: c.latitude, lon: c.longitude, heading: (c.heading != null && !isNaN(c.heading)) ? c.heading : null, speed: c.speed != null && !isNaN(c.speed) ? c.speed : null, acc: c.accuracy };
+}
+function getPos() {
+  return new Promise((res, rej) => {
+    if (!navigator.geolocation) return rej(new Error('GPS indisponible sur cet appareil'));
+    navigator.geolocation.getCurrentPosition(p => res(fixOf(p)), e => rej(new Error(
+      e.code === 1 ? 'Localisation refusée : Réglages › Confidentialité › Service de localisation › Safari (ou l\'app) › Lors de l\'utilisation' : 'Position GPS introuvable, réessayez en extérieur')),
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 });
+  });
+}
+
+/* ---------- recherche d'adresse ---------- */
+async function geocode(q, limit, typeahead) {
+  const p = new URLSearchParams({ key: key(), limit, typeahead, language: 'fr-FR', countrySet: 'BE,FR,LU,NL,DE' });
+  if (gps) { p.set('lat', gps.lat); p.set('lon', gps.lon); }
+  const j = await api(`${BASE}/search/2/search/${encodeURIComponent(q)}.json?${p}`);
+  return j.results || [];
+}
+async function resolve(q) {
+  q = q.trim(); if (!q) throw new Error('Saisissez une destination');
+  if (sugg.has(q)) return sugg.get(q);
+  const r = await geocode(q, 1, false);
+  if (!r.length) throw new Error('Adresse introuvable : ' + q);
+  const pos = { lat: r[0].position.lat, lon: r[0].position.lon }; sugg.set(q, pos); return pos;
+}
+$('dest').addEventListener('input', () => {
+  clearTimeout(deb); const q = $('dest').value.trim();
+  if (q.length < 5 || !key() || sugg.has(q)) return;
+  deb = setTimeout(async () => {
+    try {
+      const r = await geocode(q, 5, true), dl = $('dl'); dl.innerHTML = '';
+      r.forEach(x => { const l = x.address.freeformAddress; sugg.set(l, { lat: x.position.lat, lon: x.position.lon }); const o = document.createElement('option'); o.value = l; dl.appendChild(o); });
+    } catch (_) {}
+  }, 500);
+});
+
+/* ---------- itinéraire ---------- */
+function cumDist(pts) {
+  const c = [0], R = 6371000, rad = Math.PI / 180;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], dLat = (b.lat - a.lat) * rad, dLon = (b.lon - a.lon) * rad;
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
+    c.push(c[i - 1] + 2 * R * Math.asin(Math.sqrt(x)));
+  }
+  return c;
+}
+async function calc(from, to) {
+  const p = new URLSearchParams({
+    key: key(), travelMode: 'truck', routeType: 'fastest', traffic: 'true', computeTravelTimeFor: 'all',
+    vehicleCommercial: 'true', vehicleWeight: $('w').value, vehicleLength: $('l').value, vehicleWidth: $('wd').value,
+    vehicleHeight: $('h').value, vehicleMaxSpeed: $('vmax').value, instructionsType: 'text', language: 'fr-FR'
+  });
+  if (+$('ax').value > 0) p.set('vehicleAxleWeight', $('ax').value);
+  p.append('sectionType', 'traffic');
+  const loc = `${from.lat.toFixed(6)},${from.lon.toFixed(6)}:${to.lat.toFixed(6)},${to.lon.toFixed(6)}`;
+  const j = await api(`${BASE}/routing/1/calculateRoute/${loc}/json?${p}`);
+  if (!j.routes || !j.routes.length) throw new Error('Aucun itinéraire trouvé');
+  const r = j.routes[0], pts = r.legs.flatMap(l => l.points.map(q => ({ lat: q.latitude, lon: q.longitude })));
+  const instr = ((r.guidance && r.guidance.instructions) || []).map(i => ({
+    off: i.routeOffsetInMeters, msg: i.message || i.combinedMessage || '', man: i.maneuver || '', street: i.street || '',
+    pos: { lat: i.point.latitude, lon: i.point.longitude }
+  }));
+  return { sum: r.summary, pts, cum: cumDist(pts), sections: r.sections || [], instr };
+}
+// distance au tracé + position le long du tracé
+function nearestOnRoute(rt, lat, lon, from) {
+  const pts = rt.pts, cum = rt.cum, ky = 110540, kx = 111320 * Math.cos(lat * Math.PI / 180);
+  let best = Infinity, along = 0;
+  for (let i = from || 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const ax = (a.lon - lon) * kx, ay = (a.lat - lat) * ky, bx = (b.lon - lon) * kx, by = (b.lat - lat) * ky;
+    const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+    let t = L ? -(ax * dx + ay * dy) / L : 0; t = Math.max(0, Math.min(1, t));
+    const d = Math.hypot(ax + t * dx, ay + t * dy);
+    if (d < best) { best = d; along = cum[i] + t * (cum[i + 1] - cum[i]); }
+  }
+  return { d: best, along };
+}
+function pointAt(rt, d) {
+  const c = rt.cum; let lo = 0, hi = c.length - 1;
+  while (lo < hi - 1) { const m = (lo + hi) >> 1; c[m] <= d ? lo = m : hi = m; }
+  const seg = c[hi] - c[lo] || 1, f = Math.max(0, Math.min(1, (d - c[lo]) / seg)), a = rt.pts[lo], b = rt.pts[hi];
+  return { lat: a.lat + (b.lat - a.lat) * f, lon: a.lon + (b.lon - a.lon) * f };
+}
+
+/* ---------- incidents live ---------- */
+const ICONS = { 0: ['❓', 'Incident'], 1: ['💥', 'Accident'], 2: ['🌫️', 'Brouillard'], 3: ['⚠️', 'Conditions dangereuses'], 4: ['🌧️', 'Pluie'],
+  5: ['❄️', 'Verglas'], 6: ['🚗', 'Embouteillage'], 7: ['🚧', 'Voie fermée'], 8: ['⛔', 'Route fermée'], 9: ['👷', 'Travaux'],
+  10: ['💨', 'Vent'], 11: ['🌊', 'Inondation'], 14: ['🆘', 'Véhicule en panne'] };
+const isCrit = x => x.cat === 8 || x.cat === 1 || x.mag >= 3;
+async function fetchIncidents(rt, fromAlong) {
+  const pts = rt.pts, cum = rt.cum, chunks = [];
+  let st = 0; while (st < pts.length - 1 && cum[st] < fromAlong - 200) st++;
+  let a = st;
+  for (let i = st + 1; i < pts.length; i++) if (cum[i] - cum[a] >= 40000 || i === pts.length - 1) { chunks.push([a, i]); a = i; }
+  if (chunks.length > 6) chunks.length = 6;
+  const found = new Map();
+  for (const [s, e] of chunks) {
+    let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180;
+    for (let i = s; i <= e; i++) { la0 = Math.min(la0, pts[i].lat); la1 = Math.max(la1, pts[i].lat); lo0 = Math.min(lo0, pts[i].lon); lo1 = Math.max(lo1, pts[i].lon); }
+    const m = 0.02, p = new URLSearchParams({
+      key: key(), bbox: `${lo0 - m},${la0 - m},${lo1 + m},${la1 + m}`, language: 'fr-FR', timeValidityFilter: 'present',
+      fields: '{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description,code,iconCategory},from,to,length,delay,roadNumbers}}}'
+    });
+    const j = await api(`${BASE}/traffic/services/5/incidentDetails?${p}`);
+    for (const inc of j.incidents || []) {
+      const g = inc.geometry, pr = inc.properties || {}, raw = g.type === 'Point' ? [g.coordinates] : g.coordinates;
+      const line = raw.map(c => ({ lat: c[1], lon: c[0] })); if (!line.length) continue;
+      const step = Math.max(1, Math.floor(line.length / 12)); let best = { d: Infinity, along: 0 };
+      for (let i = 0; i < line.length; i += step) { const n = nearestOnRoute(rt, line[i].lat, line[i].lon); if (n.d < best.d) best = n; }
+      if (best.d > 400) continue;
+      const ev = (pr.events && pr.events[0]) || {}, id = pr.id || (g.type + JSON.stringify(raw[0]));
+      found.set(id, { id, cat: pr.iconCategory != null ? pr.iconCategory : (ev.iconCategory || 0), mag: pr.magnitudeOfDelay || 0, desc: ev.description || '',
+        delay: pr.delay || 0, pos: line[Math.floor(line.length / 2)], line, along: best.along });
+    }
+  }
+  return [...found.values()].sort((x, y) => x.along - y.along);
+}
+async function refreshIncidents() {
+  if (incBusy || !key() || !route) return;
+  incBusy = true;
+  try {
+    const along = nav && nav.along ? nav.along : 0;
+    incidents = await fetchIncidents(route, along); lastInc = Date.now(); draw();
+  } catch (e) { lastInc = Date.now(); }
+  incBusy = false;
+}
+function checkIncidentAlerts() {
+  if (!nav) return;
+  incidents.forEach(x => {
+    const ahead = x.along - nav.along;
+    if (isCrit(x) && ahead > 0 && ahead < 3000 && !nav.warned.has(x.id)) {
+      nav.warned.add(x.id);
+      const lab = (ICONS[x.cat] || ICONS[0])[1];
+      toast((ICONS[x.cat] || ICONS[0])[0] + ' ' + lab + ' dans ' + fmtDist(ahead) + (x.desc ? ' – ' + x.desc : ''), true, 8000);
+      say('Attention, ' + lab + ' dans ' + (ahead >= 1000 ? (ahead / 1000).toFixed(1).replace('.', ',') + ' kilomètres' : Math.round(ahead / 100) * 100 + ' mètres'));
+    }
+  });
+}
+
+/* ---------- carte (tuiles raster TomTom) ---------- */
+const cv = $('map'), ctx = cv.getContext('2d');
+let view = { lat: 50.47, lon: 4.87, z: 8 };
+const tiles = new Map();
+function proj(lat, lon, z) {
+  const size = 256 * 2 ** z, s = Math.sin(lat * Math.PI / 180);
+  return { x: (lon + 180) / 360 * size, y: (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * size };
+}
+function unproj(x, y, z) {
+  const size = 256 * 2 ** z, n = Math.PI - 2 * Math.PI * y / size;
+  return { lon: x / size * 360 - 180, lat: 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))) };
+}
+function tile(z, x, y) {
+  const k = z + '/' + x + '/' + y + key();
+  let t = tiles.get(k);
+  if (!t) { t = new Image(); t.onload = draw; t.src = `${BASE}/map/1/tile/basic/main/${z}/${x}/${y}.png?key=${encodeURIComponent(key())}`; tiles.set(k, t); }
+  return t;
+}
+function resize() { cv.width = cv.clientWidth * SC; cv.height = cv.clientHeight * SC; draw(); }
+function trace(pts, tl, z, i0, i1) {
+  ctx.beginPath();
+  for (let i = i0; i <= i1; i++) { const p = proj(pts[i].lat, pts[i].lon, z); i === i0 ? ctx.moveTo(p.x - tl.x, p.y - tl.y) : ctx.lineTo(p.x - tl.x, p.y - tl.y); }
+}
+function dot(p, tl, z, color, r) {
+  const q = proj(p.lat, p.lon, z); ctx.beginPath(); ctx.arc(q.x - tl.x, q.y - tl.y, r, 0, 7); ctx.fillStyle = color; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
+}
+function badge(x, tl, z) {
+  const q = proj(x.pos.lat, x.pos.lon, z), px = q.x - tl.x, py = q.y - tl.y, r = mode3d ? 17 : 14, ic = (ICONS[x.cat] || ICONS[0])[0];
+  ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = isCrit(x) ? '#d92d20' : '#f79009'; ctx.stroke();
+  ctx.font = (r + 1) + 'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#000'; ctx.fillText(ic, px, py + 1);
+  ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+}
+function arrow(p, tl, z, deg) {
+  const q = proj(p.lat, p.lon, z), s = mode3d ? 18 : 15;
+  ctx.save(); ctx.translate(q.x - tl.x, q.y - tl.y); ctx.rotate((deg || 0) * Math.PI / 180);
+  ctx.beginPath(); ctx.moveTo(0, -s); ctx.lineTo(s * .75, s * .8); ctx.lineTo(0, s * .4); ctx.lineTo(-s * .75, s * .8); ctx.closePath();
+  ctx.fillStyle = '#0b63ce'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore();
+}
+function draw() {
+  if (mode3d && nav) cameraUpdate();
+  const w = cv.clientWidth, h = cv.clientHeight, z = view.z, n = 2 ** z;
+  ctx.setTransform(SC, 0, 0, SC, 0, 0); ctx.fillStyle = '#dfe3e8'; ctx.fillRect(0, 0, w, h);
+  const c = proj(view.lat, view.lon, z), tl = { x: c.x - w / 2, y: c.y - h / 2 };
+  if (key()) {
+    for (let tx = Math.floor(tl.x / 256); tx <= Math.floor((tl.x + w) / 256); tx++)
+      for (let ty = Math.floor(tl.y / 256); ty <= Math.floor((tl.y + h) / 256); ty++) {
+        if (ty < 0 || ty >= n) continue;
+        const img = tile(z, ((tx % n) + n) % n, ty);
+        if (img.complete && img.naturalWidth) ctx.drawImage(img, tx * 256 - tl.x, ty * 256 - tl.y, 256, 256);
+      }
+  }
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (route) {
+    trace(route.pts, tl, z, 0, route.pts.length - 1); ctx.strokeStyle = '#fff'; ctx.lineWidth = 12; ctx.stroke();
+    ctx.strokeStyle = '#0b63ce'; ctx.lineWidth = 8; ctx.stroke();
+    route.sections.filter(s => s.sectionType === 'TRAFFIC').forEach(s => {
+      const cat = s.simpleCategory || '';
+      ctx.strokeStyle = cat === 'ROAD_CLOSURE' ? '#4a0d0d' : cat === 'JAM' ? '#d92d20' : cat === 'ROAD_WORK' ? '#f79009' : '#e8a400';
+      trace(route.pts, tl, z, s.startPointIndex, Math.min(s.endPointIndex, route.pts.length - 1)); ctx.lineWidth = 8; ctx.stroke();
+    });
+  }
+  incidents.forEach(x => {
+    if (x.line.length > 1 && (x.cat === 8 || x.cat === 7)) {
+      trace(x.line, tl, z, 0, x.line.length - 1); ctx.setLineDash([8, 6]); ctx.strokeStyle = x.cat === 8 ? '#7a0b0b' : '#f79009'; ctx.lineWidth = 6; ctx.stroke(); ctx.setLineDash([]);
+    }
+  });
+  incidents.forEach(x => badge(x, tl, z));
+  if (dest) dot(dest, tl, z, '#d92d20', 10);
+  if (gps) arrow(gps, tl, z, vh !== null ? vh : 0);
+}
+function fit(pts) {
+  const w = cv.clientWidth - 60, h = cv.clientHeight * 0.45;
+  for (let z = 17; z >= 3; z--) {
+    const xs = pts.map(p => proj(p.lat, p.lon, z));
+    const x0 = Math.min(...xs.map(p => p.x)), x1 = Math.max(...xs.map(p => p.x)), y0 = Math.min(...xs.map(p => p.y)), y1 = Math.max(...xs.map(p => p.y));
+    if ((x1 - x0 <= w && y1 - y0 <= h) || z === 3) { const c = unproj((x0 + x1) / 2, (y0 + y1) / 2 + (cv.clientHeight * 0.18), z); view = { lat: c.lat, lon: c.lon, z }; break; }
+  }
+  draw();
+}
+let drag = null;
+cv.addEventListener('pointerdown', e => { if (mode3d && nav) return; drag = { x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const c = proj(view.lat, view.lon, view.z), d = unproj(c.x - (e.clientX - drag.x), c.y - (e.clientY - drag.y), view.z);
+  view.lat = Math.max(-80, Math.min(80, d.lat)); view.lon = d.lon; drag = { x: e.clientX, y: e.clientY }; draw();
+});
+cv.addEventListener('pointerup', () => drag = null);
+window.addEventListener('resize', resize);
+
+/* ---------- vue 3D / caméra suiveuse ---------- */
+function cameraUpdate() {
+  if (!gps) return;
+  const kmh = gps.speed != null ? gps.speed * 3.6 : 0;
+  view.lat = gps.lat; view.lon = gps.lon; view.z = kmh < 25 ? 17 : kmh < 55 ? 16 : kmh < 85 ? 15 : 14;
+  let b = vh; if (b === null && route && nav) b = bearing(gps, pointAt(route, nav.along + 250));
+  if (b === null) b = 0;
+  if (hdgCam === null) hdgCam = b; else { const d = ((b - hdgCam) % 360 + 540) % 360 - 180; hdgCam += Math.max(-8, Math.min(8, d)); }
+  cv.style.transform = `translateY(${$('stage').clientHeight * 0.17}px) rotateX(58deg) rotateZ(${-hdgCam}deg)`;
+}
+function set3d(on) {
+  mode3d = on; hdgCam = null; const st = cv.style;
+  $('b3d').textContent = on ? '2D' : '3D'; $('sky').style.display = on ? 'block' : 'none';
+  if (on) { st.left = '-60%'; st.top = '-60%'; st.width = '220%'; st.height = '220%'; st.transition = 'transform .25s linear'; SC = 1; }
+  else { st.left = '0'; st.top = '0'; st.width = '100%'; st.height = '100%'; st.transform = 'none'; st.transition = 'none'; SC = DPR0; }
+  resize();
+  if (!on && gps && nav) { view.lat = gps.lat; view.lon = gps.lon; view.z = 16; draw(); }
+}
+$('b3d').onclick = () => { pref3d = !mode3d; set3d(pref3d); };
+$('bVoice').onclick = () => { voiceOn = !voiceOn; $('bVoice').textContent = voiceOn ? '🔊' : '🔇'; if (voiceOn) say('Voix activée'); else try { speechSynthesis.cancel(); } catch (_) {} };
+
+/* ---------- écrans ---------- */
+function setMode(m) {
+  mode = m;
+  $('setup').style.display = m === 'setup' ? 'block' : 'none';
+  $('pv').style.display = m === 'preview' ? 'block' : 'none';
+  $('hud').style.display = m === 'nav' ? 'block' : 'none';
+  $('banner').style.display = m === 'nav' ? 'flex' : 'none';
+  $('side').style.display = m === 'nav' ? 'flex' : 'none';
+  $('speed').style.display = m === 'nav' ? 'block' : 'none';
+  $('sheet').style.maxHeight = m === 'nav' ? '34%' : '78%';
+}
+function manIcon(m) {
+  m = m || '';
+  if (m.includes('ARRIVE')) return '🏁';
+  if (m.includes('ROUNDABOUT')) return '🔄';
+  if (m.includes('UTURN') || m.includes('U_TURN')) return '↩️';
+  if (m.includes('SHARP') && m.includes('LEFT')) return '↙️';
+  if (m.includes('SHARP') && m.includes('RIGHT')) return '↘️';
+  if (m.includes('KEEP_LEFT') || m.includes('BEAR_LEFT') || m.includes('EXIT_LEFT')) return '↖️';
+  if (m.includes('KEEP_RIGHT') || m.includes('BEAR_RIGHT') || m.includes('EXIT_RIGHT')) return '↗️';
+  if (m.includes('LEFT')) return '⬅️';
+  if (m.includes('RIGHT')) return '➡️';
+  return '⬆️';
+}
+
+/* ---------- préparation du trajet ---------- */
+async function prepare(fromDemo) {
+  setErr(''); saveCfg();
+  if (!key()) return setErr('Saisissez votre clé API TomTom.');
+  $('calcBtn').disabled = $('demoBtn').disabled = true;
+  try {
+    let from;
+    if (fromDemo) from = await resolve(DEPOT);
+    else { gps = await getPos(); from = { lat: gps.lat, lon: gps.lon }; }
+    dest = await resolve($('dest').value);
+    origin = from; route = await calc(from, dest); incidents = [];
+    if (fromDemo) { gps = { lat: from.lat, lon: from.lon, heading: null, speed: 0, acc: 5 }; vh = null; }
+    set3d(false); fit(route.pts);
+    const s = route.sum;
+    $('pvText').innerHTML = '';
+    const b = document.createElement('b'); b.textContent = fmtDur(s.travelTimeInSeconds) + ' · ' + fmtDist(s.lengthInMeters); $('pvText').appendChild(b);
+    const d = document.createElement('div'); d.className = 'hint';
+    d.textContent = 'Retard trafic : ' + fmtDur(s.trafficDelayInSeconds || 0) + (s.arrivalTime ? ' · arrivée ' + new Date(s.arrivalTime).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' }) : '') + (fromDemo ? ' · démo depuis le dépôt' : '');
+    $('pvText').appendChild(d);
+    $('startBtn').textContent = fromDemo ? '▶ Lancer la démo' : '▶ Démarrer la navigation';
+    $('startBtn').dataset.demo = fromDemo ? '1' : '';
+    setMode('preview'); refreshIncidents();
+  } catch (e) { setErr(e.message); }
+  $('calcBtn').disabled = $('demoBtn').disabled = false;
+}
+$('calcBtn').onclick = () => prepare(false);
+$('demoBtn').onclick = () => prepare(true);
+$('backBtn').onclick = () => { route = null; incidents = []; dest = null; setMode('setup'); draw(); };
+
+/* ---------- navigation ---------- */
+async function startNav(demo) {
+  if (!route) return;
+  say('Navigation démarrée');
+  nav = { demo, along: 0, off: 0, lastRecalc: Date.now(), busy: false, spoken: {}, warned: new Set(), watch: null, timer: null, wake: null, demoD: 0 };
+  setMode('nav'); set3d(pref3d);
+  try { if (navigator.wakeLock) nav.wake = await navigator.wakeLock.request('screen'); } catch (_) {}
+  if (demo) {
+    nav.timer = setInterval(demoTick, 500);
+  } else {
+    nav.watch = navigator.geolocation.watchPosition(p => onFix(fixOf(p)), e => toast('GPS : ' + (e.code === 1 ? 'localisation refusée' : 'signal perdu'), true),
+      { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 });
+    if (gps) onFix(gps);
+  }
+  nav.tick = setInterval(navTick, 5000);
+  document.addEventListener('visibilitychange', onVis);
+}
+function onVis() { if (nav && document.visibilityState === 'visible' && !nav.wake && navigator.wakeLock) navigator.wakeLock.request('screen').then(w => nav && (nav.wake = w)).catch(() => {}); }
+function stopNav() {
+  if (!nav) return;
+  if (nav.watch != null) navigator.geolocation.clearWatch(nav.watch);
+  clearInterval(nav.timer); clearInterval(nav.tick);
+  try { nav.wake && nav.wake.release(); } catch (_) {}
+  document.removeEventListener('visibilitychange', onVis);
+  try { speechSynthesis.cancel(); } catch (_) {}
+  nav = null; route = null; incidents = []; dest = null; set3d(false); setMode('setup'); draw();
+}
+function demoTick() {
+  if (!nav || !route) return;
+  nav.demoD += 25 * 0.5 * 4;
+  const p = pointAt(route, Math.min(nav.demoD, total(route))), a = pointAt(route, Math.min(nav.demoD + 40, total(route)));
+  onFix({ lat: p.lat, lon: p.lon, heading: bearing(p, a), speed: 25, acc: 5 });
+}
+function onFix(f) {
+  // cap : GPS si en mouvement, sinon déduit du déplacement
+  if (f.heading !== null && (f.speed || 0) > 1.5) vh = f.heading;
+  else if (!lastHeadPos || distM(lastHeadPos, f) > 8) { if (lastHeadPos && distM(lastHeadPos, f) > 8) vh = bearing(lastHeadPos, f); lastHeadPos = { lat: f.lat, lon: f.lon }; }
+  gps = f;
+  if (!nav || !route) { draw(); return; }
+  const pr = nearestOnRoute(route, f.lat, f.lon); nav.along = pr.along;
+  $('spd').textContent = f.speed != null ? Math.round(f.speed * 3.6) : '–';
+  const rem = total(route) - pr.along;
+  if (rem < 40) { say('Vous êtes arrivé à destination'); toast('🏁 Vous êtes arrivé', false, 6000); setTimeout(stopNav, 4000); return; }
+  // hors itinéraire
+  if (pr.d > Math.max(70, (f.acc || 0) * 1.5)) nav.off++; else nav.off = 0;
+  if (nav.off >= 3 && !nav.busy && Date.now() - nav.lastRecalc > 8000) recalc('hors', true);
+  // consigne suivante
+  const idx = route.instr.findIndex(i => i.off > pr.along + 15), ins = route.instr[idx];
+  if (ins) {
+    const dist = ins.off - pr.along, kmh = (f.speed || 0) * 3.6, far = kmh > 70 ? 1000 : 400;
+    $('bIcon').textContent = manIcon(ins.man); $('bDist').textContent = fmtDist(dist); $('bText').textContent = ins.msg;
+    const sp = nav.spoken[idx] || (nav.spoken[idx] = {});
+    if (dist <= far && !sp.far && dist > 120) { sp.far = true; say('Dans ' + (dist >= 1000 ? (dist / 1000).toFixed(1).replace('.', ',') + ' kilomètres' : Math.round(dist / 50) * 50 + ' mètres') + ', ' + ins.msg); }
+    else if (dist <= 60 && !sp.now) { sp.now = true; say(ins.msg); }
+  }
+  updateHud(); checkIncidentAlerts(); draw();
+}
+function updateHud() {
+  const tot = total(route), rem = Math.max(0, tot - nav.along), t = route.sum.travelTimeInSeconds * (rem / tot);
+  $('hEta').textContent = new Date(Date.now() + t * 1000).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
+  $('hRest').textContent = ' · ' + fmtDist(rem) + ' · ' + fmtDur(t);
+  const dl = route.sum.trafficDelayInSeconds || 0, hs = $('hSub');
+  hs.textContent = dl > 120 ? 'Retard trafic : ' + fmtDur(dl) : 'Pas de retard significatif';
+  hs.className = 'sub' + (dl > 300 ? ' bad' : '');
+}
+function navTick() {
+  if (!nav) return;
+  if (!nav.busy && Date.now() - nav.lastRecalc >= 60000) recalc('auto', false);
+  if (Date.now() - lastInc >= 90000) refreshIncidents();
+}
+async function recalc(reason, force) {
+  if (!nav || nav.busy || !gps) return;
+  nav.busy = true; const nv = nav;
+  try {
+    const nr = await calc({ lat: gps.lat, lon: gps.lon }, dest);
+    if (nav !== nv) return;
+    const tot = total(route), remLen = Math.max(1, tot - nav.along), expected = route.sum.travelTimeInSeconds * (remLen / tot);
+    const gain = expected - nr.sum.travelTimeInSeconds, same = Math.abs(nr.sum.lengthInMeters - remLen) / remLen < 0.03;
+    if (force || same || gain >= 180) {
+      route = nr; nav.along = 0; nav.demoD = 0; nav.off = 0; nav.spoken = {}; nav.warned = nav.warned || new Set();
+      if (force) { say('Recalcul de l\'itinéraire'); toast('Itinéraire recalculé'); }
+      else if (!same) { say('Un itinéraire plus rapide a été trouvé, gain de ' + Math.round(gain / 60) + ' minutes'); toast('Itinéraire plus rapide : −' + fmtDur(gain), false, 7000); }
+      refreshIncidents(); updateHud();
+    }
+  } catch (e) { toast('Recalcul impossible : ' + e.message, true); }
+  nv.busy = false; nv.lastRecalc = Date.now();
+}
+$('startBtn').onclick = () => startNav(!!$('startBtn').dataset.demo);
+$('stopBtn').onclick = stopNav;
+$('recBtn').onclick = () => recalc('manuel', false);
+setMode('setup'); resize();
+</script>
+</body>
+</html>
